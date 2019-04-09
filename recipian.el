@@ -13,13 +13,17 @@
 
 (defun recipian-generate-static-site (org-file www-root)
   "Parse ORG-FILE for recipes, generate a static site at WWW-ROOT."
-  (with-temp-buffer
-    (insert-file-contents org-file)
-    ;; (org-show-subtree)
-    (org-element-map (org-element-parse-buffer) 'headline
-      (lambda (elem)
-        (when (recipian--is-recipe-p elem)
-          (recipian--export-single (recipian--parse-recipe elem)))))))
+  (let ((recipes))
+    (with-temp-buffer
+      (insert-file-contents org-file)
+      (org-element-map (org-element-parse-buffer) 'headline
+        (lambda (elem)
+          (let ((recipe (recipian--parse-recipe elem)))
+            (when recipe
+              (recipian--generate-recipe www-root recipe)
+              (push recipe recipes))))))
+    (recipian--generate-index www-root recipes)
+    ))
 
 
 (defun recipian--is-recipe-p (elem)
@@ -52,20 +56,21 @@
 
 
 (defun recipian--parse-recipe (elem)
-  (let ((name (org-element-property :raw-value elem))
-        (tags (recipian--org-element-tags elem))
-        (ingredients (recipian--child-as-list
-                      (recipian--org-element-find-child elem 'headline "Ingredients")))
-        (steps (recipian--child-as-list
-                (recipian--org-element-find-child elem 'headline "Steps")))
-        )
-    (when (not (and ingredients steps))
-      (error (format "invalid recipe '%s': must have headlines Ingredients and Steps" name)))
-    `((name . ,name)
-      (tags . ,tags)
-      (ingredients . ,ingredients)
-      (steps . ,steps)
-      )))
+  (when (recipian--is-recipe-p elem)
+    (let ((name (org-element-property :raw-value elem))
+          (tags (recipian--org-element-tags elem))
+          (ingredients (recipian--child-as-list
+                        (recipian--org-element-find-child elem 'headline "Ingredients")))
+          (steps (recipian--child-as-list
+                  (recipian--org-element-find-child elem 'headline "Steps")))
+          )
+      (when (not (and ingredients steps))
+        (error (format "invalid recipe '%s': must have headlines Ingredients and Steps" name)))
+      `((name . ,name)
+        (tags . ,tags)
+        (ingredients . ,ingredients)
+        (steps . ,steps)
+        ))))
 
 ;; (defun recipian--org-element-to-text (elem)
 ;;   (let ((start (org-element-property :contents-begin elem))
@@ -82,8 +87,45 @@
    (org-element-map elem 'item #'identity nil nil 'item)))
 
 
-(defun recipian--export-single (recipe)
-  (message "%S" recipe))
+(defun recipian--name-to-url (name)
+  "Translates a recipe NAME to a valid url."
+  (let ((replacements '((" " . "-")
+                        ("&" . "and"))))
+    (cl-loop for (src . tgt) in replacements do
+         (setq name (replace-regexp-in-string (regexp-quote src) tgt name nil 'literal)))
+    (downcase name)))
+
+
+(defun recipian--generate-index (root recipes)
+  "Generate an index.html using the exported RECIPES."
+  (with-temp-file (concat root "/index.html")
+    (insert "<html><head><title>recipe index</title></head><body>")
+    (dolist (recipe recipes)
+      (let ((name (alist-get 'name recipe)))
+        (insert "<div><a href='recipe/" (recipian--name-to-url name) "'>" name "</a></div>")))
+    (insert "</body>")))
+
+
+(defun recipian--generate-recipe (root recipe)
+  "Generate a RECIPE.html from RECIPE."
+  (let ((name (alist-get 'name recipe))
+        (ingredients (alist-get 'ingredients recipe))
+        (steps (alist-get 'steps recipe)))
+    (with-temp-file (concat root "/recipe/" (recipian--name-to-url name))
+      (insert "<html><head><title>" name "</title></head><body>")
+      (insert "<a href='../index.html'>go back</a>")
+      (insert "<h1>" name "</h1>")
+      (insert "<h2>Ingredients</h2>")
+      (insert "<ul>")
+      (dolist (ingredient ingredients)
+        (insert "<li>" ingredient "</li>"))
+      (insert "</ul>")
+      (insert "<h2>Steps</h2>")
+      (insert "<ul>")
+      (dolist (step steps)
+        (insert "<li>" step "</li>"))
+      (insert "</ul>")
+      )))
 
 
 (provide 'recipian)
