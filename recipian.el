@@ -98,12 +98,24 @@
 
 (defun recipian--generate-index (root recipes)
   "Generate an index.html using the exported RECIPES."
-  (with-temp-file (concat root "/index.html")
-    (insert "<html><head><title>recipe index</title></head><body>")
-    (dolist (recipe recipes)
-      (let ((name (alist-get 'name recipe)))
-        (insert "<div><a href='recipe/" (recipian--name-to-url name) "'>" name "</a></div>")))
-    (insert "</body>")))
+  (defun recipe-cmp (r1 r2)
+    (string< (alist-get 'name r1)
+             (alist-get 'name r2)))
+  (let ((sorted-recipes (sort recipes #'recipe-cmp)))
+    (with-temp-file (concat root "/index.html")
+      (insert "<html><head><title>recipe index</title></head><body>")
+      (dolist (recipe sorted-recipes)
+        (let ((name (alist-get 'name recipe))
+              (tags (alist-get 'tags recipe)))
+          (insert "<div class='recipe'>")
+          (insert "<a class='recipe-link' href='recipe/" (recipian--name-to-url name) "'>" name "</a>")
+          (insert "<div class='recipe-tags'>")
+          (dolist (tag tags)
+            (insert "<div class='tag'>" (recipian--name-to-url tag) "</div>"))
+          (insert "</div>")               ; tags
+          (insert "</div>")               ; recipe
+          ))
+      (insert "</body>"))))
 
 
 (defun recipian--generate-recipe (root recipe)
@@ -114,17 +126,19 @@
     (with-temp-file (concat root "/recipe/" (recipian--name-to-url name))
       (insert "<html><head><title>" name "</title></head><body>")
       (insert "<a href='../index.html'>go back</a>")
-      (insert "<h1>" name "</h1>")
-      (insert "<h2>Ingredients</h2>")
-      (insert "<ul>")
+      (insert "<div class='recipe'>")
+      (insert "<div class='name'>" name "</div>")
+      (insert "<div class='ingredients'>Ingredients</div>")
+      (insert "<ul class='ingredients'>")
       (dolist (ingredient ingredients)
-        (insert "<li>" ingredient "</li>"))
+        (insert "<li class='ingredient'>" ingredient "</li>"))
       (insert "</ul>")
-      (insert "<h2>Steps</h2>")
-      (insert "<ul>")
+      (insert "<div class='steps'>Steps</div>")
+      (insert "<ul class='steps'>")
       (dolist (step steps)
-        (insert "<li>" step "</li>"))
+        (insert "<li class='step'>" step "</li>"))
       (insert "</ul>")
+      (insert "</div>")                 ; recipe
       )))
 
 
