@@ -13,41 +13,26 @@
 
 (defun recipian-generate-static-site (org-file www-root)
   "Parse ORG-FILE for recipes, generate a static site at WWW-ROOT."
-  (let ((recipes))
-    (with-temp-buffer
-      (insert-file-contents org-file)
-      (org-element-map (org-element-parse-buffer) 'headline
-        (lambda (elem)
-          (let ((recipe (recipian--parse-recipe elem)))
-            (when recipe
-              (recipian--generate-recipe www-root recipe)
-              (push recipe recipes))))))
-    (recipian--generate-index www-root recipes)
-    ))
+  (let ((recipes (recipian-parse-recipes org-file)))
+    (recipian-dump-json www-root recipes)))
 
 
-(defun recipian--is-recipe-p (elem)
-  (and (recipian--org-element-find-child elem 'headline "Ingredients")
-       (recipian--org-element-find-child elem 'headline "Steps")))
+(defun recipian-parse-recipes (org-file)
+  "Parse a list of recipes from ORG-FILE."
+  (with-temp-buffer
+    (insert-file-contents org-file)
+    (org-element-map (org-element-parse-buffer) 'headline
+      #'recipian--parse-recipe)))
 
 
-(defun recipian--org-element-children (elem type)
-  (org-element-map elem type
-    (lambda (child)
-      (let ((parent (org-element-property :parent child)))
-        (when (eq parent elem)
-          child)))))
-
-
-(defun recipian--org-element-find-child (elem type child-name)
-  (seq-filter
-   (lambda (child)
-     (equal child-name
-            (org-element-property :raw-value child)))
-   (recipian--org-element-children elem type)))
+(defun recipian-dump-json (root recipes)
+  "Generate a `ROOT/recipes.json' from RECIPES."
+  (write-region (json-encode recipes) nil (concat root "/recipes.json")))
 
 
 (defun recipian--org-element-tags (elem)
+  "Return a list of all tags of ELEM. `org-element-property' doesn't implement
+inherited tags"
   (let ((tags (org-element-property :tags elem))
         (parent (org-element-property :parent elem)))
     (if (and org-use-tag-inheritance parent)
@@ -55,91 +40,56 @@
       tags)))
 
 
+(defun recipian--org-element-contents (elem)
+  "Return all text content under ELEM as a string."
+  (let ((data (org-element-interpret-data (org-element-contents elem))))
+    (when (< 0 (length data))
+      ;; remove all string properties from data. `org-element-interpret-data'
+      ;; contains the parse tree in properties, get rid of it.
+      (set-text-properties 0 (length data) nil data)
+      data)))
+
+
+(defun recipian--find-child (elem name)
+  "Find the first direct child of ELEM with :raw-value of `NAME'."
+  (org-element-map (org-element-contents elem) 'headline
+    (lambda (child)
+      (when (equal name (org-element-property :raw-value child))
+        child))
+    nil t 'headline))
+
+
+(defun recipian--child-as-list (elem)
+  "Find any org list items under ELEM and return as a lisp list."
+  (org-element-map (org-element-contents elem) 'item
+    (lambda (item)
+      (let ((start (org-element-property :contents-begin item))
+            (end (org-element-property :contents-end item)))
+        (buffer-substring start (1- end))))
+    nil nil 'item))
+
+
 (defun recipian--parse-recipe (elem)
-  (when (recipian--is-recipe-p elem)
-    (let ((name (org-element-property :raw-value elem))
-          (tags (recipian--org-element-tags elem))
-          (ingredients (recipian--child-as-list
-                        (recipian--org-element-find-child elem 'headline "Ingredients")))
-          (steps (recipian--child-as-list
-                  (recipian--org-element-find-child elem 'headline "Steps")))
-          )
-      (when (not (and ingredients steps))
-        (error (format "invalid recipe '%s': must have headlines Ingredients and Steps" name)))
+  "Parse the recipe at ELEM and return an associated list of data. Returns NIL
+on an invalid recipe."
+  (let ((name (org-element-property :raw-value elem))
+        (tags (recipian--org-element-tags elem))
+        (ingredients (recipian--child-as-list
+                      (recipian--find-child elem "Ingredients")))
+        (steps (recipian--child-as-list
+                (recipian--find-child elem "Steps")))
+        (notes (recipian--org-element-contents
+                (recipian--find-child elem "Notes")))
+        (servings (org-element-property :SERVINGS elem))
+        (source (org-element-property :SOURCE elem)))
+    (when (and ingredients steps)
       `((name . ,name)
         (tags . ,tags)
         (ingredients . ,ingredients)
         (steps . ,steps)
-        ))))
-
-;; (defun recipian--org-element-to-text (elem)
-;;   (let ((start (org-element-property :contents-begin elem))
-;;         (end (org-element-property :contents-end elem)))
-;;     (buffer-substring start (- end 1))))
-
-
-(defun recipian--child-as-list (elem)
-  (mapcar
-   (lambda (elem)
-     (let ((start (org-element-property :contents-begin elem))
-           (end (org-element-property :contents-end elem)))
-       (buffer-substring start (- end 1))))
-   (org-element-map elem 'item #'identity nil nil 'item)))
-
-
-(defun recipian--name-to-url (name)
-  "Translates a recipe NAME to a valid url."
-  (let ((replacements '((" " . "-")
-                        ("&" . "and"))))
-    (cl-loop for (src . tgt) in replacements do
-         (setq name (replace-regexp-in-string (regexp-quote src) tgt name nil 'literal)))
-    (downcase name)))
-
-
-(defun recipian--generate-index (root recipes)
-  "Generate an index.html using the exported RECIPES."
-  (defun recipe-cmp (r1 r2)
-    (string< (alist-get 'name r1)
-             (alist-get 'name r2)))
-  (let ((sorted-recipes (sort recipes #'recipe-cmp)))
-    (with-temp-file (concat root "/index.html")
-      (insert "<html><head><title>recipe index</title></head><body>")
-      (dolist (recipe sorted-recipes)
-        (let ((name (alist-get 'name recipe))
-              (tags (alist-get 'tags recipe)))
-          (insert "<div class='recipe'>")
-          (insert "<a class='recipe-link' href='recipe/" (recipian--name-to-url name) "'>" name "</a>")
-          (insert "<div class='recipe-tags'>")
-          (dolist (tag tags)
-            (insert "<div class='tag'>" (recipian--name-to-url tag) "</div>"))
-          (insert "</div>")               ; tags
-          (insert "</div>")               ; recipe
-          ))
-      (insert "</body>"))))
-
-
-(defun recipian--generate-recipe (root recipe)
-  "Generate a RECIPE.html from RECIPE."
-  (let ((name (alist-get 'name recipe))
-        (ingredients (alist-get 'ingredients recipe))
-        (steps (alist-get 'steps recipe)))
-    (with-temp-file (concat root "/recipe/" (recipian--name-to-url name))
-      (insert "<html><head><title>" name "</title></head><body>")
-      (insert "<a href='../index.html'>go back</a>")
-      (insert "<div class='recipe'>")
-      (insert "<div class='name'>" name "</div>")
-      (insert "<div class='ingredients'>Ingredients</div>")
-      (insert "<ul class='ingredients'>")
-      (dolist (ingredient ingredients)
-        (insert "<li class='ingredient'>" ingredient "</li>"))
-      (insert "</ul>")
-      (insert "<div class='steps'>Steps</div>")
-      (insert "<ul class='steps'>")
-      (dolist (step steps)
-        (insert "<li class='step'>" step "</li>"))
-      (insert "</ul>")
-      (insert "</div>")                 ; recipe
-      )))
+        (notes . ,notes)
+        (servings . ,servings)
+        (source . ,source)))))
 
 
 (provide 'recipian)
