@@ -14,7 +14,7 @@
 (defun recipian-generate-static-site (org-file www-root)
   "Parse ORG-FILE for recipes, generate a static site at WWW-ROOT."
   (let ((recipes (recipian-parse-recipes org-file)))
-    (recipian-dump-json www-root recipes)))
+    (recipian-write-json (concat www-root "/recipes.json") recipes)))
 
 
 (defun recipian-parse-recipes (org-file)
@@ -25,9 +25,9 @@
       #'recipian--parse-recipe)))
 
 
-(defun recipian-dump-json (root recipes)
+(defun recipian-write-json (filename recipes)
   "Generate a `ROOT/recipes.json' from RECIPES."
-  (write-region (json-encode recipes) nil (concat root "/recipes.json")))
+  (write-region (json-encode recipes) nil filename))
 
 
 (defun recipian--org-element-tags (elem)
