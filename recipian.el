@@ -30,6 +30,21 @@
   (write-region (json-encode recipes) nil filename))
 
 
+(defun recipian-parse-plans (org-file)
+  "Parse a list of meal plans from ORG-FILE"
+  (message "parsing %s" org-file)
+  (with-temp-buffer
+    (insert-file-contents org-file)
+    (org-element-map (org-element-parse-buffer) 'headline
+      #'recipian--parse-plan)))
+
+
+(defun recipian-all-names (filename)
+  "Parse FILENAME for recipes and return list of names."
+  (mapcar (lambda (recipe) (alist-get 'name recipe))
+		  (recipian-parse-recipes filename)))
+
+
 (defun recipian--org-element-tags (elem)
   "Return a list of all tags of ELEM. `org-element-property' doesn't implement
 inherited tags"
@@ -40,14 +55,18 @@ inherited tags"
       tags)))
 
 
+(defun recipian--strip-props (string)
+  "Remove all string properties from STRING. `org-element' places pointers to
+the parse tree on strings, so when we call `(message)' on it we get a bunch of
+junk."
+  (when string
+    (set-text-properties 0 (length string) nil string))
+  string)
+
+
 (defun recipian--org-element-contents (elem)
   "Return all text content under ELEM as a string."
-  (let ((data (org-element-interpret-data (org-element-contents elem))))
-    (when (< 0 (length data))
-      ;; remove all string properties from data. `org-element-interpret-data'
-      ;; contains the parse tree in properties, get rid of it.
-      (set-text-properties 0 (length data) nil data)
-      data)))
+  (recipian--strip-props (org-element-interpret-data (org-element-contents elem))))
 
 
 (defun recipian--find-child (elem name)
@@ -90,6 +109,20 @@ on an invalid recipe."
         (notes . ,notes)
         (servings . ,servings)
         (source . ,source)))))
+
+
+(defun recipian--parse-plan (elem)
+  "Parse the plan at ELEM and return an associated list of data. Returns NIL on
+an invalid plan."
+  (let ((name (org-element-property :raw-value elem))
+        (tags (recipian--org-element-tags elem))
+        (date (org-element-property :scheduled elem)))
+    (when (and date
+               (or (string-prefix-p "TODO" name)
+                   (string-prefix-p "DONE" name))
+               (member "plan" tags))
+      `((name . ,(substring name 5))
+        (date . ,(format-time-string "%Y-%m-%d" (org-timestamp-to-time date)))))))
 
 
 (provide 'recipian)
