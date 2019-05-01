@@ -91,10 +91,12 @@ junk."
 on an invalid recipe."
   (let ((name (org-element-property :raw-value elem))
         (tags (recipian--org-element-tags elem))
-        (ingredients (recipian--child-as-list
-                      (recipian--find-child elem "Ingredients")))
-        (steps (recipian--child-as-list
-                (recipian--find-child elem "Steps")))
+        (ingredients  (mapcar #'recipian--parse-ingredient
+                              (recipian--child-as-list
+                               (recipian--find-child elem "Ingredients"))))
+        (steps (mapcar #'recipian--strip-props
+                       (recipian--child-as-list
+                        (recipian--find-child elem "Steps"))))
         (notes (recipian--org-element-contents
                 (recipian--find-child elem "Notes")))
         (servings (org-element-property :SERVINGS elem))
@@ -107,6 +109,19 @@ on an invalid recipe."
         (notes . ,notes)
         (servings . ,servings)
         (source . ,source)))))
+
+
+(defun recipian--parse-ingredient (line)
+  "Parse an ingredient LINE and return a triple of (AMOUNT UNIT TEXT)."
+  (if (not (string-match "^ *\\([./0-9]+\\) *\\([a-z]*\\)\\b\\(.*\\)$" line))
+      `((amount . nil)
+        (unit . nil)
+        (ingredient . ,line))
+    (defun clean-match (n)
+      (recipian--strip-props (string-trim  (match-string n line))))
+    `((amount . ,(clean-match 1))
+      (unit . ,(clean-match 2))
+      (ingredient . ,(clean-match 3)))))
 
 
 (defun recipian--parse-plan (elem)
