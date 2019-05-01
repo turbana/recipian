@@ -114,12 +114,25 @@ on an invalid recipe."
 an invalid plan."
   (let ((name (org-element-property :raw-value elem))
         (tags (recipian--org-element-tags elem))
-        (date (org-element-property :scheduled elem)))
+        (todo (recipian--strip-props (org-element-property :todo-keyword elem)))
+        (date (org-element-property :scheduled elem))
+        count)
     (when (and date
-               (or (string-prefix-p "TODO" name)
-                   (string-prefix-p "DONE" name))
+               (member todo '("COOK" "PREP" "DONE"))
                (member "plan" tags))
-      `((name . ,(substring name 5))
+      ;; if name ends in "xN": pull out number into count and strip from name
+      (setq name
+            (string-trim
+             (replace-regexp-in-string
+              "x[0-9]+$"
+              (lambda (match)
+                (setq count (string-to-number (substring match 1)))
+                "")
+              name
+              nil)))
+      `((name . ,name)
+        (todo . ,todo)
+        (count . ,count)
         (date . ,(format-time-string "%Y-%m-%d" (org-timestamp-to-time date)))))))
 
 
