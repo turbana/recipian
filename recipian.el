@@ -21,6 +21,7 @@
   "Parse a list of recipes from ORG-FILE."
   (with-temp-buffer
     (insert-file-contents org-file)
+    (org-mode)
     (org-element-map (org-element-parse-buffer) 'headline
       #'recipian--parse-recipe)))
 
@@ -32,9 +33,9 @@
 
 (defun recipian-parse-plans (org-file)
   "Parse a list of meal plans from ORG-FILE"
-  (message "parsing %s" org-file)
   (with-temp-buffer
     (insert-file-contents org-file)
+    (org-mode)
     (org-element-map (org-element-parse-buffer) 'headline
       #'recipian--parse-plan)))
 
@@ -47,12 +48,9 @@
 
 (defun recipian--org-element-tags (elem)
   "Return a list of all tags of ELEM. `org-element-property' doesn't implement
-inherited tags"
-  (let ((tags (org-element-property :tags elem))
-        (parent (org-element-property :parent elem)))
-    (if (and org-use-tag-inheritance parent)
-        (delete-dups (append tags (recipian--org-element-tags parent)))
-      tags)))
+inherited tags or filetags"
+  (mapcar #'recipian--strip-props
+          (org-get-tags (org-element-property :begin elem))))
 
 
 (defun recipian--strip-props (string)
