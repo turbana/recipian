@@ -100,14 +100,20 @@ on an invalid recipe."
         (notes (recipian--org-element-contents
                 (recipian--find-child elem "Notes")))
         (servings (org-element-property :SERVINGS elem))
+        serving-size
+        serving-type
         (source (org-element-property :SOURCE elem)))
     (when (and ingredients steps)
+      (when (string-match "^\\([0-9]+\\) +\\(.*\\)$" servings)
+        (setq serving-size (string-to-number (match-string 1 servings)))
+        (setq serving-type (recipian--strip-props (match-string 2 servings))))
       `((name . ,name)
         (tags . ,tags)
         (ingredients . ,ingredients)
         (steps . ,steps)
         (notes . ,notes)
-        (servings . ,servings)
+        (serving-size . ,serving-size)
+        (serving-type . ,serving-type)
         (source . ,source)))))
 
 
