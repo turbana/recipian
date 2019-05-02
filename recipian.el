@@ -104,9 +104,11 @@ on an invalid recipe."
         serving-type
         (source (org-element-property :SOURCE elem)))
     (when (and ingredients steps)
-      (when (string-match "^\\([0-9]+\\) +\\(.*\\)$" servings)
-        (setq serving-size (string-to-number (match-string 1 servings)))
-        (setq serving-type (recipian--strip-props (match-string 2 servings))))
+      (when (string-match "^\\([0-9./ ]+\\)\\b\\(.*\\)$" servings)
+        (let ((grp1 (match-string 1 servings))
+              (grp2 (match-string 2 servings)))
+          (setq serving-size (recipian--parse-number grp1))
+          (setq serving-type (recipian--strip-props grp2))))
       `((name . ,name)
         (tags . ,tags)
         (ingredients . ,ingredients)
@@ -117,17 +119,35 @@ on an invalid recipe."
         (source . ,source)))))
 
 
+(defun recipian--parse-number (num)
+  "Parse NUM as a number, supported formats: N, N.M, N/M, N M/O"
+  (let ((num (string-trim num)))
+    (cond ((string-match-p " " num)
+           (apply #'+ (mapcar #'recipian--parse-number (split-string num " "))))
+          ((string-match-p "/" num)
+           (apply #'/ (mapcar #'recipian--parse-number (split-string num "/"))))
+          (t
+           (float (string-to-number num))))))
+
+
 (defun recipian--parse-ingredient (line)
   "Parse an ingredient LINE and return a triple of (AMOUNT UNIT TEXT)."
-  (if (not (string-match "^ *\\([./0-9]+\\) *\\([a-z]*\\)\\b\\(.*\\)$" line))
+  (if (not (string-match "^\\([0-9./ ]+\\)\\([a-z]+\\)\\b\\(.*\\)$" line))
       `((amount . nil)
         (unit . nil)
         (ingredient . ,line))
-    (defun clean-match (n)
-      (recipian--strip-props (string-trim  (match-string n line))))
-    `((amount . ,(clean-match 1))
-      (unit . ,(clean-match 2))
-      (ingredient . ,(clean-match 3)))))
+    (defun string-clean (s)
+      (recipian--strip-props (string-trim s)))
+    ;; NOTE: we can't use `(string-trim)' until we have captured all matching
+    ;; groups as `(string-trim)' uses regexp's to trim messing up our outer
+    ;; regexp.
+    (let ((grp1 (match-string 1 line))
+          (grp2 (match-string 2 line))
+          (grp3 (match-string 3 line)))
+      `((amount . ,(recipian--parse-number grp1))
+        (unit . ,(string-clean grp2))
+        (ingredient . ,(string-clean grp3)))
+      )))
 
 
 (defun recipian--parse-plan (elem)
