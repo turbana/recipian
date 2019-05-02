@@ -136,6 +136,7 @@ an invalid plan."
   (let ((name (org-element-property :raw-value elem))
         (tags (recipian--org-element-tags elem))
         (todo (recipian--strip-props (org-element-property :todo-keyword elem)))
+        (notes (recipian--element-as-string elem))
         (date (org-element-property :scheduled elem))
         count)
     (when (and date
@@ -153,8 +154,25 @@ an invalid plan."
               nil)))
       `((name . ,name)
         (todo . ,todo)
+        (notes . ,notes)
         (count . ,count)
         (date . ,(format-time-string "%Y-%m-%d" (org-timestamp-to-time date)))))))
+
+
+(defun recipian--element-as-string (elem)
+  "Return a textual representation of ELEM, without any `org-mode' special
+blocks"
+  (recipian--strip-props
+   (mapconcat
+    #'identity
+    (org-element-map (org-element-contents elem) 'paragraph
+      (lambda (item)
+        (let ((start (org-element-property :contents-begin item))
+              (end (org-element-property :contents-end item)))
+          (buffer-substring start (1- end))))
+      nil nil 'paragraph)
+    "\n"
+    )))
 
 
 (provide 'recipian)
