@@ -166,7 +166,7 @@ an invalid plan."
       (setq name
             (string-trim
              (replace-regexp-in-string
-              "x[0-9]+$"
+              "x[0-9.]+$"
               (lambda (match)
                 (setq count (string-to-number (substring match 1)))
                 "")
