@@ -26,9 +26,11 @@
       #'recipian--parse-recipe)))
 
 
-(defun recipian-write-json (filename recipes)
-  "Generate a `ROOT/recipes.json' from RECIPES."
-  (write-region (json-encode recipes) nil filename))
+(defun recipian-write-json (filename json-data)
+  "Write `JSON-data' to `FILENAME'."
+  (when (not json-data)
+    (error "cannot write json file with nil data"))
+  (write-region (json-encode json-data) nil filename))
 
 
 (defun recipian-parse-plans (org-file)
